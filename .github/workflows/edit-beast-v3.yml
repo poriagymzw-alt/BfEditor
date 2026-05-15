@@ -1,0 +1,102 @@
+name: Edit Beast V3
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: "Direct video URL or GitHub attachment URL"
+        required: false
+        default: ""
+      music_url:
+        description: "Direct music URL or GitHub attachment URL"
+        required: false
+        default: ""
+      style:
+        description: "auto / rage_phonk / dark_phonk / velocity / cinematic / glitch_beast"
+        required: false
+        default: "auto"
+      duration:
+        description: "Edit duration in seconds"
+        required: false
+        default: "18"
+
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+jobs:
+  render:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        contains(github.event.comment.body, '/render') &&
+        (
+          github.event.comment.author_association == 'OWNER' ||
+          github.event.comment.author_association == 'MEMBER' ||
+          github.event.comment.author_association == 'COLLABORATOR'
+        )
+      )
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python packages
+        run: |
+          python -m pip install --upgrade pip
+          pip install opencv-python-headless numpy librosa soundfile tqdm requests
+
+      - name: Download assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VIDEO_URL: ${{ github.event.inputs.video_url || '' }}
+          MUSIC_URL: ${{ github.event.inputs.music_url || '' }}
+          STYLE_INPUT: ${{ github.event.inputs.style || 'auto' }}
+          DURATION_INPUT: ${{ github.event.inputs.duration || '18' }}
+        run: |
+          python scripts/download_assets.py
+
+      - name: Render heavy edit
+        run: |
+          python scripts/edit_beast_v3.py
+
+      - name: Upload output
+        uses: actions/upload-artifact@v4
+        with:
+          name: edit-beast-v3-output
+          path: |
+            output/final_edit.mp4
+            output/preview.gif
+            output/thumbnail.jpg
+            output/caption.txt
+            output/hashtags.txt
+            output/edit_report.md
+            output/edit_plan.json
+            output/variants/*.mp4
+
+      - name: Comment result
+        if: github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --body "🔥 Edit Beast V3 finished. Download output here: $RUN_URL → Artifacts → edit-beast-v3-output"
