@@ -3,45 +3,25 @@ name: Edit Beast V3
 on:
   workflow_dispatch:
     inputs:
-      video_url:
-        description: "Direct video URL or GitHub attachment URL"
-        required: false
-        default: ""
-      music_url:
-        description: "Direct music URL or GitHub attachment URL"
-        required: false
+      package_url:
+        description: "ZIP URL from GitHub Release. ZIP must contain anime.mp4 and music.mp3"
+        required: true
         default: ""
       style:
         description: "auto / rage_phonk / dark_phonk / velocity / cinematic / glitch_beast"
         required: false
-        default: "auto"
+        default: "rage_phonk"
       duration:
         description: "Edit duration in seconds"
         required: false
         default: "18"
 
-  issue_comment:
-    types: [created]
-
 permissions:
   contents: read
-  issues: write
   actions: read
 
 jobs:
   render:
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      (
-        github.event_name == 'issue_comment' &&
-        contains(github.event.comment.body, '/render') &&
-        (
-          github.event.comment.author_association == 'OWNER' ||
-          github.event.comment.author_association == 'MEMBER' ||
-          github.event.comment.author_association == 'COLLABORATOR'
-        )
-      )
-
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
@@ -52,7 +32,7 @@ jobs:
       - name: Install FFmpeg
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg unzip
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -64,17 +44,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install opencv-python-headless numpy librosa soundfile tqdm requests
 
-      - name: Download assets
+      - name: Download assets from release ZIP
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VIDEO_URL: ${{ github.event.inputs.video_url || '' }}
-          MUSIC_URL: ${{ github.event.inputs.music_url || '' }}
-          STYLE_INPUT: ${{ github.event.inputs.style || 'auto' }}
-          DURATION_INPUT: ${{ github.event.inputs.duration || '18' }}
+          PACKAGE_URL: ${{ github.event.inputs.package_url }}
+          STYLE_INPUT: ${{ github.event.inputs.style }}
+          DURATION_INPUT: ${{ github.event.inputs.duration }}
         run: |
           python scripts/download_assets.py
 
-      - name: Render heavy edit
+      - name: Render edit
         run: |
           python scripts/edit_beast_v3.py
 
@@ -91,12 +70,3 @@ jobs:
             output/edit_report.md
             output/edit_plan.json
             output/variants/*.mp4
-
-      - name: Comment result
-        if: github.event_name == 'issue_comment'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          gh issue comment "$ISSUE_NUMBER" --body "🔥 Edit Beast V3 finished. Download output here: $RUN_URL → Artifacts → edit-beast-v3-output"
